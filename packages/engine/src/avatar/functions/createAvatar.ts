@@ -120,6 +120,9 @@ export const createAvatar = (
             y: transform.position.y + avatarHalfHeight,
             z: transform.position.z
           }
+        },
+        userData: {
+          entity
         }
       })
     )
@@ -150,6 +153,9 @@ export const createAvatarController = (entity: Entity) => {
       },
       material: {
         dynamicFriction: 0.1
+      },
+      userData: {
+        entity
       }
     })
   )
@@ -166,10 +172,6 @@ export const createAvatarController = (entity: Entity) => {
     movementEnabled: true,
     isJumping: false,
     isWalking: false,
-    walkSpeed: 1.5,
-    runSpeed: 5,
-    moveSpeed: 5,
-    jumpHeight: 4,
     localMovementDirection: new Vector3(),
     velocitySimulator
   })
