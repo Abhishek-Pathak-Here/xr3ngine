@@ -5,29 +5,28 @@ import { Engine } from '../../ecs/classes/Engine'
 import { EngineEvents } from '../../ecs/classes/EngineEvents'
 import { Entity } from '../../ecs/classes/Entity'
 import { addComponent, createEntity } from '../../ecs/functions/EntityFunctions'
-import { GameObject } from '../../game/components/GameObject'
+import { NameComponent } from '../components/NameComponent'
 import { InteractableComponent } from '../../interaction/components/InteractableComponent'
 import { Network } from '../../networking/classes/Network'
 import { createParticleEmitterObject } from '../../particles/functions/particleHelpers'
-import { createCollider } from '../../physics/behaviors/createCollider'
+import { createCollider } from '../../physics/functions/createCollider'
 import { EngineRenderer } from '../../renderer/WebGLRendererSystem'
 import { CopyTransformComponent } from '../../transform/components/CopyTransformComponent'
-import { addObject3DComponent } from '../behaviors/addObject3DComponent'
-import { createDirectionalLight } from '../behaviors/createDirectionalLight'
-import { createGame } from '../behaviors/createGame'
-import { createGround } from '../behaviors/createGround'
-import { createMap } from '../behaviors/createMap'
-import { createAudio, createMediaServer, createVideo, createVolumetric } from '../behaviors/createMedia'
-import { createPortal } from '../behaviors/createPortal'
-import { createSkybox } from '../behaviors/createSkybox'
-import { createTransformComponent } from '../behaviors/createTransformComponent'
-import { createTriggerVolume } from '../behaviors/createTriggerVolume'
-import { configureCSM, handleRendererSettings } from '../behaviors/handleRendererSettings'
-import { loadGLTFModel } from '../behaviors/loadGLTFModel'
-import { loadModelAnimation } from '../behaviors/loadModelAnimation'
-import { setCameraProperties } from '../behaviors/setCameraProperties'
-import { setEnvMap } from '../behaviors/setEnvMap'
-import { setFog } from '../behaviors/setFog'
+import { addObject3DComponent } from '../functions/addObject3DComponent'
+import { createDirectionalLight } from '../functions/createDirectionalLight'
+import { createGround } from '../functions/createGround'
+import { createMap } from '../functions/createMap'
+import { createAudio, createMediaServer, createVideo, createVolumetric } from '../functions/createMedia'
+import { createPortal } from '../functions/createPortal'
+import { createSkybox } from '../functions/createSkybox'
+import { createTransformComponent } from '../functions/createTransformComponent'
+import { createTriggerVolume } from '../functions/createTriggerVolume'
+import { configureCSM, handleRendererSettings } from '../functions/handleRendererSettings'
+import { loadGLTFModel } from '../functions/loadGLTFModel'
+import { loadModelAnimation } from '../functions/loadModelAnimation'
+import { setCameraProperties } from '../functions/setCameraProperties'
+import { setEnvMap } from '../functions/setEnvMap'
+import { setFog } from '../functions/setFog'
 import { Clouds } from '../classes/Clouds'
 import Image from '../classes/Image'
 import { Ocean } from '../classes/Ocean'
@@ -42,6 +41,7 @@ import { WalkableTagComponent } from '../components/Walkable'
 import { BoxColliderProps } from '../interfaces/BoxColliderProps'
 import { SceneData } from '../interfaces/SceneData'
 import { SceneDataComponent } from '../interfaces/SceneDataComponent'
+
 export enum SCENE_ASSET_TYPES {
   ENVMAP
 }
@@ -74,6 +74,8 @@ export class WorldScene {
     Object.keys(scene.entities).forEach((key) => {
       const sceneEntity = scene.entities[key]
       const entity = createEntity()
+
+      addComponent(entity, NameComponent, { name: sceneEntity.name })
 
       sceneEntity.components.forEach((component) => {
         component.data.sceneEntityId = sceneEntity.entityId
@@ -115,19 +117,6 @@ export class WorldScene {
     // remove '-1', '-2' etc suffixes
     const name = component.name.replace(/(-\d+)|(\s)/g, '')
     switch (name) {
-      case 'game':
-        createGame(entity, component.data)
-        break
-
-      case 'game-object':
-        addComponent(entity, GameObject, {
-          gameName: component.data.gameName,
-          role: component.data.role,
-          uuid: component.data.sceneEntityId,
-          collisionBehaviors: {}
-        })
-        break
-
       case 'ambient-light':
         addObject3DComponent(entity, new AmbientLight(), component.data)
         break
@@ -298,7 +287,6 @@ export class WorldScene {
         if (isClient) {
           EngineEvents.instance.once(EngineEvents.EVENTS.CLIENT_USER_LOADED, async () => {
             setCameraProperties(Network.instance.localClientEntity, component.data)
-            switchCameraMode(Network.instance.localClientEntity, component.data, true)
           })
         }
         break
@@ -328,7 +316,12 @@ export class WorldScene {
         break
 
       /* deprecated */
+      case 'game':
       case 'mesh-collider':
+        break
+
+      case 'mdata':
+        console.log('[SceneLoading]: Scene metadata not implemented')
         break
 
       default:
