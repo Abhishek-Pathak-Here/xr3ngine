@@ -2,7 +2,7 @@ import { Mesh, Object3D, BoxBufferGeometry, Material } from 'three'
 import {
   createBuildings,
   createRoads,
-  createGround,
+  createGroundMesh,
   createWater,
   createLandUse,
   safelySetGroundScaleAndPosition
@@ -57,21 +57,20 @@ export default class MapNode extends EditorNodeMixin(Object3D) {
   }
   async addMap(editor) {
     console.log('creating map')
-    const renderer = editor.renderer.renderer
     const center = await getStartCoords(this.getProps())
     const vectorTiles = await fetchVectorTiles(center)
     const rasterTiles = this.showRasterTiles ? await fetchRasterTiles(center) : []
 
     this.mapLayers = {
-      building: createBuildings(vectorTiles, center, renderer),
+      building: createBuildings(vectorTiles, center),
 
-      road: createRoads(vectorTiles, center, renderer),
+      road: createRoads(vectorTiles, center),
 
-      ground: createGround(rasterTiles, center[1]),
+      ground: createGroundMesh(rasterTiles, center[1]),
 
-      water: createWater(vectorTiles, center, renderer),
+      water: createWater(vectorTiles, center),
 
-      landUse: createLandUse(vectorTiles, center, renderer)
+      landUse: createLandUse(vectorTiles, center)
     }
 
     Object.values(this.mapLayers).forEach((layer) => {
@@ -86,7 +85,7 @@ export default class MapNode extends EditorNodeMixin(Object3D) {
     const center = await getStartCoords(this.getProps())
     const rasterTiles = this.showRasterTiles ? await fetchRasterTiles(center) : []
     this.mapLayers.ground.removeFromParent()
-    this.mapLayers.ground = createGround(rasterTiles, center[1])
+    this.mapLayers.ground = createGroundMesh(rasterTiles, center[1])
     this.applyScale(this.mapLayers.ground)
     safelySetGroundScaleAndPosition(this.mapLayers.ground, this.mapLayers.building)
     this.add(this.mapLayers.ground)
