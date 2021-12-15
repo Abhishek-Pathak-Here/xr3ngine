@@ -12,6 +12,9 @@ import { NetworkWorldAction } from '../../networking/functions/NetworkWorldActio
 import { UserId } from '@xrengine/common/src/interfaces/UserId'
 import { NetworkId } from '@xrengine/common/src/interfaces/NetworkId'
 import { random } from 'lodash'
+import { CameraIKComponent } from '../components/CameraIKComponent'
+import { applyCameraLook } from '../functions/IKSolvers'
+import { useWorld } from '../../ecs/functions/SystemHooks'
 
 const logCustomTargetRigBones = (targetRig) => {
   if (targetRig.name !== 'custom') {
@@ -44,7 +47,7 @@ const mockAvatars = () => {
       thumbnailURL: `/projects/default-project/avatars/Cyberbot${cyberbot}.png`,
       avatarURL: `/projects/default-project/avatars/Cyberbot${cyberbot}.glb`,
       avatarId: `Cyberbot${cyberbot}`
-    } as any
+    }
     const userId = ('user' + i) as UserId
     const parameters = {
       position: new Vector3(0, 0, 0).random().setY(0).multiplyScalar(10),
@@ -53,15 +56,24 @@ const mockAvatars = () => {
 
     const networkId = (1000 + i) as NetworkId
 
-    dispatchLocal(NetworkWorldAction.createClient({ userId, name: 'user', avatarDetail }) as any)
-    dispatchLocal({ ...NetworkWorldAction.spawnAvatar({ userId, parameters }), networkId } as any)
+    dispatchLocal(NetworkWorldAction.createClient({ $from: useWorld().hostId, userId, name: 'user' }))
+    dispatchLocal({ ...NetworkWorldAction.spawnAvatar({ parameters }), networkId })
+    dispatchLocal(NetworkWorldAction.avatarDetails({ avatarDetail }))
   }
 }
 
 export default async function SkeletonRigSystem(world: World): Promise<System> {
+  const cameraIKQuery = defineQuery([IKRigComponent, CameraIKComponent])
   const ikposeQuery = defineQuery([IKPoseComponent, IKRigComponent, IKRigTargetComponent])
   // mockAvatars()
   return () => {
+    // Apply camera IK to the source skeleton
+    for (const entity of cameraIKQuery()) {
+      const rig = getComponent(entity, IKRigComponent)
+      const cameraSolver = getComponent(entity, CameraIKComponent)
+      applyCameraLook(rig, cameraSolver)
+    }
+
     for (const entity of ikposeQuery()) {
       const ikPose = getComponent(entity, IKPoseComponent)
       const rig = getComponent(entity, IKRigComponent)

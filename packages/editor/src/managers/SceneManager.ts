@@ -492,7 +492,7 @@ export class SceneManager {
   update = (delta: number, time: number) => {
     if (this.disableUpdate) return
 
-    Engine.scene.traverse((node: any) => {
+    Engine.scene?.traverse((node: any) => {
       if (Engine.renderer.shadowMap.enabled && node.isDirectionalLight) {
         resizeShadowCameraFrustum(node, Engine.scene)
       }
@@ -502,7 +502,7 @@ export class SceneManager {
       }
     })
 
-    EngineRenderer.instance.execute(delta)
+    EngineRenderer.instance?.execute(delta)
   }
 
   updateOutlinePassSelection(): any[] {

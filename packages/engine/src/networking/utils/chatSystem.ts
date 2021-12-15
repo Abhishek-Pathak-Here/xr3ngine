@@ -2,7 +2,8 @@ import { Engine } from '../../ecs/classes/Engine'
 
 //updates the client list with the right username for the user
 export async function _updateUsername(userId, username) {
-  for (let [_, client] of Engine.defaultWorld.clients) {
+  if (!Engine.currentWorld) return
+  for (let [_, client] of Engine.currentWorld.clients) {
     if (client.userId === userId) {
       client.name = username
       return
@@ -12,9 +13,9 @@ export async function _updateUsername(userId, username) {
 
 //checks if a player has subscribed to a chat system
 export function hasSubscribedToChatSystem(userId, system: string): boolean {
-  if (system === undefined || system === '' || userId === undefined) return false
+  if (system === undefined || system === '' || userId === undefined || !Engine.currentWorld) return false
 
-  for (let [_, client] of Engine.defaultWorld.clients) {
+  for (let [_, client] of Engine.currentWorld.clients) {
     if (client.userId === userId) {
       return client.subscribedChatUpdates.includes(system)
     }
@@ -24,9 +25,9 @@ export function hasSubscribedToChatSystem(userId, system: string): boolean {
 }
 //subscribe a player to a chat system
 export function subscribeToChatSystem(userId, system: string) {
-  if (system === undefined || system === '' || userId === undefined) return
+  if (system === undefined || system === '' || userId === undefined || !Engine.currentWorld) return
 
-  for (let [_, client] of Engine.defaultWorld.clients) {
+  for (let [_, client] of Engine.currentWorld.clients) {
     if (client.userId === userId) {
       if (system !== 'all' && !client.subscribedChatUpdates.includes(system)) {
         client.subscribedChatUpdates.push(system)
@@ -43,9 +44,9 @@ export function subscribeToChatSystem(userId, system: string) {
 }
 //unsubscribe a player from a chat system
 export function unsubscribeFromChatSystem(userId, system: string) {
-  if (system === undefined || system === '' || userId === undefined) return
+  if (system === undefined || system === '' || userId === undefined || !Engine.currentWorld) return
 
-  for (let [_, client] of Engine.defaultWorld.clients) {
+  for (let [_, client] of Engine.currentWorld.clients) {
     if (client.userId === userId) {
       if (system !== 'all' && client.subscribedChatUpdates.includes(system)) {
         client.subscribedChatUpdates.splice(client.subscribedChatUpdates.indexOf(system), 1)
@@ -59,9 +60,9 @@ export function unsubscribeFromChatSystem(userId, system: string) {
 }
 //gets all the systems that a user has subscribed to
 export function getSubscribedChatSystems(userId): string[] {
-  if (userId === undefined) return []
+  if (userId === undefined || !Engine.currentWorld) return []
 
-  for (let [_, client] of Engine.defaultWorld.clients) {
+  for (let [_, client] of Engine.currentWorld.clients) {
     if (client.userId === userId) {
       return client.subscribedChatUpdates
     }
@@ -73,7 +74,8 @@ export function getSubscribedChatSystems(userId): string[] {
 //gets the chat system from a chat message
 export function getChatMessageSystem(text: string): string {
   if (text.startsWith('[emotions]')) return 'emotions_system'
-  else if (text.startsWith('[jl_system]') || text.includes('joined the layer')) return 'jl_system'
+  else if (text.startsWith('[jl_system]') || text.includes('joined the layer') || text.includes('left the layer'))
+    return 'jl_system'
   else if (text.startsWith('[proximity')) return 'proximity_system'
 
   return 'none'

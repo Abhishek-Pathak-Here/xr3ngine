@@ -1,4 +1,4 @@
-import { Group, Quaternion, Vector3 } from 'three'
+import { Camera, Group, Quaternion, Vector3 } from 'three'
 import {
   addComponent,
   defineQuery,
@@ -25,14 +25,29 @@ import { Engine } from '../ecs/classes/Engine'
 import { initializeHandModel } from '../xr/functions/addControllerModels'
 import { XRLGripButtonComponent, XRRGripButtonComponent } from '../xr/components/XRGripButtonComponent'
 import { playTriggerPressAnimation, playTriggerReleaseAnimation } from '../xr/functions/controllerAnimation'
+import { CameraIKComponent } from '../ikrig/components/CameraIKComponent'
+import { isEntityLocalClient } from '../networking/functions/isEntityLocalClient'
+import { isClient } from '../common/functions/isClient'
+import { loadAvatarForEntity } from './functions/avatarFunctions'
 
 function avatarActionReceptor(action) {
   const world = useWorld()
 
   matches(action)
-    .when(NetworkWorldAction.setXRMode.matchesFromAny, (a) => {
-      if (a.$from !== world.hostId && a.$from !== a.userId) return
-      const entity = world.getUserAvatarEntity(a.userId)
+    .when(NetworkWorldAction.avatarDetails.matches, ({ $from, avatarDetail }) => {
+      const client = world.clients.get($from)!
+      if (client.avatarDetail?.avatarURL === avatarDetail.avatarURL) return
+      if (isClient) {
+        const entity = world.getUserAvatarEntity($from)
+        // if(entity)
+        loadAvatarForEntity(entity, avatarDetail)
+        // else
+        //   console.warn('avatarDetails receptor tried to set the avatar of a user that does not exist' + $from)
+      }
+    })
+
+    .when(NetworkWorldAction.setXRMode.matches, (a) => {
+      const entity = world.getUserAvatarEntity(a.$from)
       if (!entity) return
 
       if (a.enabled) {
@@ -53,9 +68,9 @@ function avatarActionReceptor(action) {
       }
     })
 
-    .when(NetworkWorldAction.xrHandsConnected.matchesFromAny, (a) => {
-      if (a.userId === Engine.userId) return
-      const entity = world.getUserAvatarEntity(a.userId)
+    .when(NetworkWorldAction.xrHandsConnected.matches, (a) => {
+      if (a.$from === Engine.userId) return
+      const entity = world.getUserAvatarEntity(a.$from)
       if (!entity) return
 
       if (!hasComponent(entity, XRHandsInputComponent)) {
@@ -71,10 +86,10 @@ function avatarActionReceptor(action) {
       })
     })
 
-    .when(NetworkWorldAction.teleportObject.matchesFromAny, (a) => {
+    .when(NetworkWorldAction.teleportObject.matches, (a) => {
       const [x, y, z, qX, qY, qZ, qW] = a.pose
 
-      const entity = world.getNetworkObject(a.networkId)
+      const entity = world.getNetworkObject(a.object.ownerId, a.object.networkId)
 
       const colliderComponent = getComponent(entity, ColliderComponent)
       if (colliderComponent) {
@@ -117,12 +132,22 @@ export default async function AvatarSystem(world: World): Promise<System> {
 
       xrInputSourceComponent.container.applyQuaternion(rotate180onY)
       object3DComponent.value.add(xrInputSourceComponent.container, xrInputSourceComponent.head)
+
+      // Add head IK Solver
+      if (!isEntityLocalClient(entity)) {
+        addComponent(entity, CameraIKComponent, {
+          boneIndex: 5, // Head bone
+          camera: xrInputSourceComponent.head,
+          rotationClamp: 0.785398
+        })
+      }
     }
 
     for (const entity of xrInputQuery.exit(world)) {
       const xrInputComponent = getComponent(entity, XRInputSourceComponent, true)
       xrInputComponent.container.removeFromParent()
       xrInputComponent.head.removeFromParent()
+      removeComponent(entity, CameraIKComponent)
     }
 
     for (const entity of xrHandsInputQuery.enter(world)) {

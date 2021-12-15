@@ -109,6 +109,7 @@ export const addComponent = <T, S extends bitECS.ISchema>(
   if (typeof entity === 'undefined') {
     throw new Error('[addComponent]: entity is undefined')
   }
+  if (hasComponent(entity, component)) throw new Error('component already exists' + entity + component._name)
   bitECS.addComponent(world, component, entity)
   if ((component as any)._schema) {
     for (const [key] of Object.entries((component as any)._schema as any)) {
@@ -167,7 +168,7 @@ export const removeAllComponents = (entity: Entity, world = useWorld()) => {
 }
 
 export function defineQuery(components: (bitECS.Component | bitECS.QueryModifier)[]) {
-  const query = bitECS.defineQuery(components) as bitECS.Query
+  const query = bitECS.defineQuery([...components, bitECS.Not(EntityRemovedComponent)]) as bitECS.Query
   const enterQuery = bitECS.enterQuery(query)
   const exitQuery = bitECS.exitQuery(query)
   const wrappedQuery = (world = useWorld()) => query(world) as Entity[]
@@ -177,3 +178,5 @@ export function defineQuery(components: (bitECS.Component | bitECS.QueryModifier
 }
 
 export type Query = ReturnType<typeof defineQuery>
+
+export const EntityRemovedComponent = createMappedComponent<{}>('EntityRemovedComponent')

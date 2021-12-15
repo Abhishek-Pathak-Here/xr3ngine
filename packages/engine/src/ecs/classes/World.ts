@@ -1,6 +1,13 @@
 import { isClient } from '../../common/functions/isClient'
 import { Action } from '../../networking/interfaces/Action'
-import { addComponent, defineQuery, getComponent, hasComponent, MappedComponent } from '../functions/ComponentFunctions'
+import {
+  addComponent,
+  defineQuery,
+  EntityRemovedComponent,
+  getComponent,
+  hasComponent,
+  MappedComponent
+} from '../functions/ComponentFunctions'
 import { createEntity } from '../functions/EntityFunctions'
 import { SystemFactoryType, SystemModuleType } from '../functions/SystemFunctions'
 import { Entity } from './Entity'
@@ -16,8 +23,14 @@ import { NetworkClient } from '../../networking/interfaces/NetworkClient'
 import { SystemUpdateType } from '../functions/SystemUpdateType'
 import { WorldStateInterface } from '../../networking/schema/networkSchema'
 import { PersistTagComponent } from '../../scene/components/PersistTagComponent'
+import { PortalComponent } from '../../scene/components/PortalComponent'
 
-type SystemInstanceType = { name: string; type: SystemUpdateType; execute: System }
+type SystemInstanceType = {
+  name: string
+  type: SystemUpdateType
+  sceneSystem: boolean
+  execute: System
+}
 
 type RemoveIndex<T> = {
   [K in keyof T as string extends K ? never : number extends K ? never : K]: T[K]
@@ -30,7 +43,7 @@ export class World {
     Engine.worlds.push(this)
     this.worldEntity = createEntity(this)
     this.localClientEntity = isClient ? (createEntity(this) as Entity) : (NaN as Entity)
-    if (!Engine.defaultWorld) Engine.defaultWorld = this
+    if (!Engine.currentWorld) Engine.currentWorld = this
     addComponent(this.worldEntity, PersistTagComponent, {}, this)
   }
 
@@ -48,8 +61,15 @@ export class World {
   _pipeline = [] as SystemModuleType<any>[]
 
   physics = new Physics()
-  entities = [] as Entity[]
-  portalEntities = [] as Entity[]
+
+  #entityQuery = bitecs.defineQuery([])
+  entityQuery = () => this.#entityQuery(this) as Entity[]
+
+  #entityRemovedQuery = bitecs.defineQuery([EntityRemovedComponent])
+
+  #portalQuery = bitecs.defineQuery([PortalComponent])
+  portalQuery = () => this.#portalQuery(this) as Entity[]
+
   isInPortal = false
 
   /** Connected clients */
@@ -58,11 +78,14 @@ export class World {
   /** Incoming actions */
   incomingActions = new Set<Required<Action>>()
 
-  /** Delayed actions */
-  delayedActions = new Set<Required<Action>>()
+  /** Cached actions */
+  cachedActions = new Set<Required<Action>>()
 
   /** Outgoing actions */
   outgoingActions = new Set<Action>()
+
+  /** All actions that have been dispatched */
+  actionHistory = new Set<Action>()
 
   outgoingNetworkState: WorldStateInterface
   previousNetworkState: WorldStateInterface
@@ -80,7 +103,7 @@ export class World {
   hostId = 'server' as HostUserId
 
   /**
-   * The world entity (always exists, and always has eid 0)
+   * The world entity
    */
   worldEntity: Entity
 
@@ -90,21 +113,9 @@ export class World {
   localClientEntity: Entity
 
   /**
-   * Systems that run only once every frame.
-   * Ideal for cosmetic updates (e.g., particles), animation, rendering, etc.
-   */
-  freeSystems = [] as SystemInstanceType[]
-
-  /**
-   * Systems that run once for every fixed time interval (in simulation time).
-   * Ideal for game logic, ai logic, simulation logic, etc.
-   */
-  fixedSystems = [] as SystemInstanceType[]
-
-  /**
    * Custom systems injected into this world
    */
-  injectedSystems = {
+  pipelines = {
     [SystemUpdateType.UPDATE]: [],
     [SystemUpdateType.FIXED_EARLY]: [],
     [SystemUpdateType.FIXED]: [],
@@ -125,20 +136,21 @@ export class World {
 
   /**
    * Get the network objects owned by a given user
-   * @param userId
+   * @param ownerId
    */
-  getOwnedNetworkObjects(userId: UserId) {
-    return this.networkObjectQuery(this).filter((eid) => getComponent(eid, NetworkObjectComponent).userId === userId)
+  getOwnedNetworkObjects(ownerId: UserId) {
+    return this.networkObjectQuery(this).filter((eid) => getComponent(eid, NetworkObjectComponent).ownerId === ownerId)
   }
 
   /**
-   * Get a network object by NetworkId
+   * Get a network object by owner and NetworkId
    * @returns
    */
-  getNetworkObject(networkId: NetworkId) {
-    return this.networkObjectQuery(this).find(
-      (eid) => getComponent(eid, NetworkObjectComponent).networkId === networkId
-    )!
+  getNetworkObject(ownerId: UserId, networkId: NetworkId) {
+    return this.networkObjectQuery(this).find((eid) => {
+      const networkObject = getComponent(eid, NetworkObjectComponent)
+      return networkObject.networkId === networkId && networkObject.ownerId === ownerId
+    })!
   }
 
   /**
@@ -150,6 +162,14 @@ export class World {
     return this.getOwnedNetworkObjects(userId).find((eid) => {
       return hasComponent(eid, AvatarComponent, this)
     })!
+  }
+
+  /** ID of last network created. */
+  #availableNetworkId = 0 as NetworkId
+
+  /** Get next network id. */
+  createNetworkId(): NetworkId {
+    return ++this.#availableNetworkId as NetworkId
   }
 
   /**
@@ -166,15 +186,19 @@ export class World {
   execute(delta: number, elapsedTime: number) {
     this.delta = delta
     this.elapsedTime = elapsedTime
-    for (const system of this.freeSystems) system.execute()
+    for (const system of this.pipelines[SystemUpdateType.UPDATE]) system.execute()
+    for (const system of this.pipelines[SystemUpdateType.PRE_RENDER]) system.execute()
+    for (const system of this.pipelines[SystemUpdateType.POST_RENDER]) system.execute()
+    for (const entity of this.#entityRemovedQuery(this)) bitecs.removeEntity(this, entity)
   }
 
-  async initSystems() {
+  async initSystems(systemModulesToLoad: SystemModuleType<any>[] = this._pipeline) {
     const loadSystem = async (s: SystemFactoryType<any>) => {
       const system = await s.systemModule.default(this, s.args)
       return {
         name: s.systemModule.default.name,
         type: s.type,
+        sceneSystem: s.sceneSystem,
         execute: () => {
           try {
             system()
@@ -185,21 +209,19 @@ export class World {
       } as SystemInstanceType
     }
     const systemModule = await Promise.all(
-      this._pipeline.map(async (s) => {
+      systemModulesToLoad.map(async (s) => {
         return {
           args: s.args,
           type: s.type,
+          sceneSystem: s.sceneSystem,
           systemModule: await s.systemModulePromise
         }
       })
     )
     const systems = await Promise.all(systemModule.map(loadSystem))
-    systems.forEach((s) => console.log(`${s.type} ${s.name}`))
-    this.freeSystems = systems.filter((s) => {
-      return !s.type.includes('FIXED')
-    })
-    this.fixedSystems = systems.filter((s) => {
-      return s.type.includes('FIXED')
+    systems.forEach((s) => {
+      this.pipelines[s.type].push(s)
+      console.log(`${s.type} ${s.name}`)
     })
     console.log('[World]: All systems initialized!')
   }

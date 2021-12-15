@@ -210,10 +210,9 @@ export class SocketWebRTCClientTransport implements NetworkTransport {
         })
         return
       }
-      const { connectedClients, routerRtpCapabilities } = ConnectToWorldResponse as any
+      const { routerRtpCapabilities } = ConnectToWorldResponse as any
       EngineEvents.instance.dispatchEvent({
         type: EngineEvents.EVENTS.CONNECT_TO_WORLD,
-        connectedClients,
         instance: instance === true
       })
       if ((socket as any).instance) {
@@ -238,7 +237,7 @@ export class SocketWebRTCClientTransport implements NetworkTransport {
         const actions = message as any as Required<Action>[]
         // const actions = decode(new Uint8Array(message)) as IncomingActionType[]
         for (const a of actions) {
-          Engine.defaultWorld!.incomingActions.add(a)
+          Engine.currentWorld!.incomingActions.add(a)
         }
       })
 
