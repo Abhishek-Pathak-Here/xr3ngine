@@ -21,4 +21,9 @@ export interface SceneDetailInterface {
   thumbnailUrl: string
   scene?: SceneJson
   project?: string
+  id?: string
+  type?: string
+  description?: string
+  entities?: any
+  version?: string
 }
